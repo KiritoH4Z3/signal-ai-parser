@@ -39,6 +39,11 @@ const config: Config = {
         // Every data surface: metric values, chips, counters, status line,
         // timestamps. The mono-for-data rule is what sells the console feel.
         mono: ["var(--font-jetbrains-mono)", "ui-monospace", "monospace"],
+        // The noise: raw, un-extracted source prose, and nothing else. Held to
+        // three uses (hero's first line, the diagram's source paragraph,
+        // section eyebrows) so the contrast against `mono` stays legible as an
+        // argument rather than reading as decoration.
+        serif: ["var(--font-newsreader)", "ui-serif", "Georgia", "serif"],
       },
       fontSize: {
         // Uppercase letterspaced section kickers.
@@ -56,11 +61,44 @@ const config: Config = {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.45" },
         },
+        "fade-in": {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
+        /**
+         * The landing hero's extraction sequence. Each of these ends at the
+         * element's *resting* appearance and runs with `both` fill, so the 0%
+         * frame holds during `animation-delay` and the 100% frame sticks
+         * afterwards. That is what lets the reduced-motion block in globals.css
+         * collapse the whole sequence to its final state on the first paint —
+         * no JS gate, no flash of the un-run state.
+         */
+        "mark-in": {
+          "0%": {
+            color: "#8AA6A1",
+            backgroundColor: "rgba(94, 234, 212, 0)",
+            boxShadow: "inset 0 -1px 0 0 rgba(94, 234, 212, 0)",
+          },
+          "100%": {
+            color: "#E6F1EF",
+            backgroundColor: "rgba(94, 234, 212, 0.1)",
+            boxShadow: "inset 0 -1px 0 0 rgba(94, 234, 212, 0.55)",
+          },
+        },
+        // Paths carry pathLength={1}, so one length-agnostic keyframe draws any
+        // hairline regardless of its measured geometry.
+        "draw-line": {
+          "0%": { strokeDashoffset: "1" },
+          "100%": { strokeDashoffset: "0" },
+        },
       },
       animation: {
         shimmer: "shimmer 1.6s infinite",
         "fade-up": "fade-up 380ms cubic-bezier(0.16, 1, 0.3, 1) both",
         "led-pulse": "led-pulse 1.8s ease-in-out infinite",
+        "fade-in": "fade-in 300ms ease-out both",
+        "mark-in": "mark-in 400ms cubic-bezier(0.16, 1, 0.3, 1) both",
+        "draw-line": "draw-line 500ms cubic-bezier(0.16, 1, 0.3, 1) both",
       },
     },
   },

@@ -1,12 +1,17 @@
 import type { Metric } from "@/lib/types";
 
-type Direction = "up" | "down" | "flat";
+export type Direction = "up" | "down" | "flat";
 
 /**
  * Read the direction off the change string. The normalizer already shapes these
  * as "+27%" / "-3pts" / "" — anything it can't sign reads as flat.
+ *
+ * Exported (with the three lookup tables below) so the landing page's hero
+ * cards can speak this component's visual language without forking it. They
+ * can't reuse `MetricCards` itself — each hero card needs its own id as a
+ * provenance-hairline anchor — but the delta rendering must not drift.
  */
-function direction(change: string): Direction {
+export function direction(change: string): Direction {
   const trimmed = change.trim();
   if (!trimmed) return "flat";
   if (/^[+▲]/.test(trimmed) || /\bup\b/i.test(trimmed)) return "up";
@@ -18,13 +23,17 @@ function direction(change: string): Direction {
  * Delta glyph + colour together — never colour alone (WCAG 1.4.1). The glyph is
  * aria-hidden and the direction is spelled out for screen readers instead.
  */
-const GLYPH: Record<Direction, string> = { up: "▲", down: "▼", flat: "" };
-const TONE: Record<Direction, string> = {
+export const GLYPH: Record<Direction, string> = { up: "▲", down: "▼", flat: "" };
+export const TONE: Record<Direction, string> = {
   up: "text-sentiment-positive",
   down: "text-sentiment-negative",
   flat: "text-console-dim",
 };
-const SPOKEN: Record<Direction, string> = { up: "up", down: "down", flat: "" };
+export const SPOKEN: Record<Direction, string> = {
+  up: "up",
+  down: "down",
+  flat: "",
+};
 
 export function MetricCards({ metrics }: { metrics: Metric[] }) {
   if (metrics.length === 0) return null;

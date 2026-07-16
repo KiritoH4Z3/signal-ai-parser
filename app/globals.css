@@ -104,14 +104,22 @@
 }
 
 /* Honour the OS setting: the gauge sweep, the skeleton shimmer, the LED pulse
-   and every transition collapse to their end state. */
+   and every transition collapse to their end state.
+
+   The delay resets matter as much as the durations. The landing hero staggers
+   its extraction sequence with `animation-delay` alone; without zeroing that,
+   a reduced-motion visitor would sit on the un-run state for 1.2s and then get
+   a pop — which is the motion they asked not to have. Zeroed here, every
+   `both`-filled animation lands on its final frame on the first paint. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
 }

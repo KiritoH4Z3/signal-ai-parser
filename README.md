@@ -69,7 +69,7 @@ Two details I care about:
 | Measure | Number |
 |---|---|
 | Tests | **171 passing** in ~5s (9 files, all offline — no key, no network) |
-| First-load JS | **104 kB** for `/`, statically prerendered |
+| First-load JS | **113 kB** for `/console`, **98 kB** for the landing — both statically prerendered |
 | Runtime dependencies | **4** — `next`, `react`, `react-dom`, `server-only` |
 | Source | 38 TypeScript files |
 | Accessibility | **0 violations** (accesslint), **0 contrast failures** at WCAG AA |
@@ -83,12 +83,14 @@ The tests run with zero API credit because every Gemini call is mocked at the `f
 
 ```
 app/
-  page.tsx              server component — no client JS in the shell
+  page.tsx              the landing page — server component
+  console/page.tsx      the workbench shell — server component, no client JS
   api/analyze/          POST: the Gemini proxy
   api/validate-key/     POST: cheap key check (the green LED)
   api/ask/              POST: {op: "embed" | "answer"} — the RAG route
 components/
-  Workbench.tsx         the single "use client" island
+  Workbench.tsx         the console's single "use client" island
+  landing/              hero extraction diagram + its provenance hairlines
   report/               gauge, KPI cards, chips, exports, skeleton, errors
   library/              BriefingLibrary, AskArchive
 lib/
@@ -100,7 +102,7 @@ lib/
 
 **Contracts first.** `types.ts` and `errors.ts` were written before any feature code. Every module — routes, components, tests — codes against those types, which is why the UI cannot receive a shape it doesn't handle.
 
-**One client island.** `page.tsx` stays a server component; `Workbench` is the only `"use client"` boundary.
+**One client island.** `console/page.tsx` stays a server component; `Workbench` is the only `"use client"` boundary on it. The landing page holds to the same rule — it ships one island, and only because a hairline that points at a phrase inside flowing text has to measure where that phrase landed.
 
 ## Handling the model's bad days
 

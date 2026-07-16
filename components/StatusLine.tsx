@@ -25,8 +25,11 @@ function Dot({ mode }: { mode: KeyMode }) {
 }
 
 function Sep() {
+  // `console-border` is a 1.32:1 hairline colour — fine for a rule, not for a
+  // glyph. A separator is decoration, but it is still rendered text and has to
+  // clear AA like the fields it sits between.
   return (
-    <span aria-hidden="true" className="text-console-border">
+    <span aria-hidden="true" className="text-console-faint">
       ·
     </span>
   );

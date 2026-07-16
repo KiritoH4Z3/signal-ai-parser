@@ -13,7 +13,8 @@ export function TopicTags({ topics }: { topics: string[] }) {
             key={`${topic}-${i}`}
             className="rounded border border-console-accent/25 bg-console-accent/[0.07] px-2.5 py-1 font-mono text-xs text-console-accent"
           >
-            <span aria-hidden="true" className="text-console-accent/50">
+            {/* Decorative, but still rendered text — it has to clear AA like any other. */}
+            <span aria-hidden="true" className="text-console-accent/70">
               #
             </span>
             {topic}

@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
 import "./globals.css";
 
 /**
- * Both faces are self-hosted by next/font at build time — the CSP in
+ * All three faces are self-hosted by next/font at build time — the CSP in
  * next.config.mjs pins `font-src 'self'`, so an external font host would be
  * blocked at runtime.
  */
@@ -17,6 +17,19 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-jetbrains-mono",
+});
+
+/**
+ * The serif is the noise — raw source prose, before anything has been extracted
+ * from it. It earns its place by being used almost nowhere: the landing hero's
+ * first line, the source paragraph in the extraction diagram, and section
+ * eyebrows. Everything the product actually produces is mono.
+ */
+const newsreader = Newsreader({
+  subsets: ["latin"],
+  display: "swap",
+  style: ["normal", "italic"],
+  variable: "--font-newsreader",
 });
 
 const title = "Signal — AI Market Intelligence Parser";
@@ -53,7 +66,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${jetbrainsMono.variable} dark`}
+      className={`${inter.variable} ${jetbrainsMono.variable} ${newsreader.variable} dark`}
       suppressHydrationWarning
     >
       <body className="console-grid min-h-screen font-sans">{children}</body>

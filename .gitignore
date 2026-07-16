@@ -1,11 +1,21 @@
-# Streamlit secrets — never commit real API keys
-.streamlit/secrets.toml
+# dependencies
+node_modules/
 
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
+# next.js
+.next/
+out/
+
+# env & secrets
 .env
+.env.*
+
+# tooling output
+graphify-out/
+__pycache__/
 .pytest_cache/
+
+# misc
+*.log
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts

@@ -53,8 +53,17 @@ export type ValidateKeyResponse =
 export interface HistoryEntry {
   id: string;
   timestamp: number;
+  /** First ~120 chars of `source`, whitespace-collapsed — the rail's preview line. */
   preview: string;
+  /** The full source text that produced this briefing. */
   source: string;
   sentiment: SentimentLabel;
   result: AnalysisResult;
+  /**
+   * True when this briefing is canned demo data rather than a live model call.
+   * Optional and additive: entries written before this field existed simply read
+   * as live, which is what they were. Without it a restored demo would lose its
+   * "Preview mode" badge and misrepresent canned data as a real analysis.
+   */
+  isPreview?: boolean;
 }

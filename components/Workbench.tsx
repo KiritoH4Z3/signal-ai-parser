@@ -2,14 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EXAMPLES, EXAMPLE_RESULTS } from "@/lib/examples";
+import { addEntry, clearHistory, loadHistory, removeEntry } from "@/lib/history";
 import { clearKey, getKey, setKey } from "@/lib/key-store";
 import type { SignalErrorCode } from "@/lib/errors";
-import type { AnalysisResult, AnalyzeResponse, ValidateKeyResponse } from "@/lib/types";
+import type {
+  AnalysisResult,
+  AnalyzeResponse,
+  HistoryEntry,
+  ValidateKeyResponse,
+} from "@/lib/types";
 import { ApiKeyPanel, type KeyState } from "@/components/ApiKeyPanel";
 import { ExampleGallery } from "@/components/ExampleGallery";
+import { HistoryRail } from "@/components/HistoryRail";
 import { InputPanel } from "@/components/InputPanel";
 import { StatusLine } from "@/components/StatusLine";
 import { ErrorPanel } from "@/components/report/ErrorPanel";
+import { ExportBar } from "@/components/report/ExportBar";
 import { ReportSkeleton } from "@/components/report/ReportSkeleton";
 import { ReportView } from "@/components/report/ReportView";
 
@@ -34,18 +42,7 @@ interface ReportState {
   preview: boolean;
 }
 
-export function Workbench({
-  /** Phase 3 seam: HistoryRail mounts here in the left rail. */
-  historySlot,
-  /** Phase 3 seam: ExportBar mounts in the report header. */
-  exportSlot,
-  /** Phase 3 seam: fires on every completed analysis (live or demo). */
-  onResult,
-}: {
-  historySlot?: React.ReactNode;
-  exportSlot?: React.ReactNode;
-  onResult?: (result: AnalysisResult, meta: { preview: boolean; source: string }) => void;
-} = {}) {
+export function Workbench() {
   const [view, setView] = useState<View>("idle");
   const [keyState, setKeyState] = useState<KeyState>("none");
   const [keyValue, setKeyValue] = useState("");
@@ -58,6 +55,9 @@ export function Workbench({
     null,
   );
 
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
+
   const [testing, setTesting] = useState(false);
   const [testReason, setTestReason] = useState<string | null>(null);
   const [lastParseMs, setLastParseMs] = useState<number | null>(null);
@@ -66,14 +66,59 @@ export function Workbench({
 
   const reportRef = useRef<HTMLDivElement>(null);
 
-  // Rehydrate the key from sessionStorage after mount. Doing this in an effect
-  // (not during render) keeps the server and first client render identical.
+  // Rehydrate from storage after mount. Doing this in an effect (not during
+  // render) keeps the server and first client render identical.
+  //
+  // The asymmetry here is deliberate, not an oversight: the key comes back from
+  // sessionStorage (same tab only — a fresh tab starts keyless), while history
+  // comes back from localStorage (a fresh tab still has your past briefings).
+  // The secret dies with the tab; the work does not.
   useEffect(() => {
     const stored = getKey();
     if (stored) {
       setKeyValue(stored);
       setKeyState("untested");
     }
+    setHistory(loadHistory());
+  }, []);
+
+  /** Record a finished briefing and make it the selected entry in the rail. */
+  const recordHistory = useCallback(
+    (result: AnalysisResult, sourceText: string, isPreview: boolean) => {
+      const next = addEntry(result, sourceText, isPreview);
+      setHistory(next);
+      setActiveHistoryId(next[0]?.id ?? null);
+    },
+    [],
+  );
+
+  /**
+   * Revisit a past briefing. The stored entry already holds the full
+   * AnalysisResult, so this is pure state — no fetch, no key, no quota.
+   */
+  const handleRestore = useCallback((entry: HistoryEntry) => {
+    setReport({ result: entry.result, preview: entry.isPreview ?? false });
+    setText(entry.source);
+    setActiveExample(null);
+    setError(null);
+    setView("report");
+    setActiveHistoryId(entry.id);
+    setAnnouncement("Restored a saved briefing.");
+  }, []);
+
+  const handleRemoveHistory = useCallback(
+    (id: string) => {
+      setHistory(removeEntry(id));
+      if (activeHistoryId === id) setActiveHistoryId(null);
+      setAnnouncement("Briefing removed from history.");
+    },
+    [activeHistoryId],
+  );
+
+  const handleClearHistory = useCallback(() => {
+    setHistory(clearHistory());
+    setActiveHistoryId(null);
+    setAnnouncement("History cleared.");
   }, []);
 
   const handleKeyChange = useCallback((next: string) => {
@@ -129,9 +174,11 @@ export function Workbench({
       setError(null);
       setView("report");
       setAnnouncement("Analysis complete. Showing a preview briefing.");
-      onResult?.(canned, { preview: true, source: label });
+      // The example's own text, not the gallery label — `source` is what gets
+      // restored into the editor, so it has to be the real thing.
+      recordHistory(canned, EXAMPLES[label] ?? "", true);
     },
-    [onResult],
+    [recordHistory],
   );
 
   const handlePickExample = useCallback(
@@ -177,7 +224,7 @@ export function Workbench({
         setView("report");
         setKeyState("valid");
         setAnnouncement("Analysis complete.");
-        onResult?.(body.result, { preview: false, source: activeExample ?? "Pasted text" });
+        recordHistory(body.result, text, false);
       } else {
         setError(body.error);
         setView("error");
@@ -193,7 +240,7 @@ export function Workbench({
       setView("error");
       setAnnouncement(`Analysis failed. ${fallback.message}`);
     }
-  }, [keyValue, text, activeExample, onResult]);
+  }, [keyValue, text, recordHistory]);
 
   const focusKeyPanel = useCallback(() => {
     setKeyHighlight(true);
@@ -222,8 +269,13 @@ export function Workbench({
             testReason={testReason}
             highlighted={keyHighlight}
           />
-          {/* Phase 3: HistoryRail lands here. */}
-          {historySlot}
+          <HistoryRail
+            entries={history}
+            activeId={activeHistoryId}
+            onRestore={handleRestore}
+            onRemove={handleRemoveHistory}
+            onClear={handleClearHistory}
+          />
         </aside>
 
         {/* Main column */}
@@ -256,7 +308,7 @@ export function Workbench({
               <ReportView
                 result={report.result}
                 preview={report.preview}
-                exportSlot={exportSlot}
+                exportSlot={<ExportBar result={report.result} />}
               />
             )}
             {view === "error" && error && (

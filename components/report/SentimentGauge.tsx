@@ -94,17 +94,18 @@ export function SentimentGauge({ sentiment }: { sentiment: Sentiment }) {
   const filled = swept ? ARC_LENGTH * (1 - score / 100) : ARC_LENGTH;
   const gaugeId = `gauge-grad-${sentiment.label}`;
 
+  // role="img" belongs on the svg, not the figure — ARIA disallows it there.
+  // The svg carries the score (its readout is drawn, not text); the figcaption
+  // below already speaks the label and confidence band, so the two together
+  // announce without repeating each other.
   return (
-    <figure
-      className="flex flex-col items-center gap-1"
-      role="img"
-      aria-label={`${sentiment.label} sentiment, ${score} out of 100 confidence`}
-    >
+    <figure className="flex flex-col items-center gap-1">
       <div className="relative">
         <svg
           viewBox="0 0 200 152"
           className="w-[200px] max-w-full"
-          aria-hidden="true"
+          role="img"
+          aria-label={`Confidence score ${score} out of 100`}
           focusable="false"
         >
           <defs>

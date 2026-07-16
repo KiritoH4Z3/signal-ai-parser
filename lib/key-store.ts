@@ -8,10 +8,12 @@
  *     only way it leaves this module is the caller placing it in the
  *     `X-Gemini-Key` header of a same-origin request.
  *
- * Every accessor is guarded: sessionStorage throws in a server render and in
- * browsers with site data blocked, and a thrown storage error must never take
- * the app down.
+ * Every accessor is guarded (see `lib/storage.ts`): sessionStorage throws in a
+ * server render and in browsers with site data blocked, and a thrown storage
+ * error must never take the app down.
  */
+
+import { removeKey, safeStorage } from "@/lib/storage";
 
 const STORAGE_KEY = "signal.gemini_key.v1";
 
@@ -23,14 +25,12 @@ export function looksLikeGeminiKey(key: string): boolean {
   return /^AIza[0-9A-Za-z_-]{35}$/.test(key);
 }
 
+/**
+ * The key is stored as a raw string, not JSON — hence `safeStorage` directly
+ * rather than the `readArray`/`writeJson` helpers next to it.
+ */
 function storage(): Storage | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.sessionStorage;
-  } catch {
-    // Site data blocked — degrade to in-memory-for-this-render, never crash.
-    return null;
-  }
+  return safeStorage("session");
 }
 
 /** The key for this tab, or "" if none. */
@@ -57,9 +57,6 @@ export function setKey(key: string): void {
 }
 
 export function clearKey(): void {
-  try {
-    storage()?.removeItem(STORAGE_KEY);
-  } catch {
-    // Nothing to do — the key is already unreachable.
-  }
+  // Nothing to do on failure — the key is already unreachable.
+  removeKey("session", STORAGE_KEY);
 }

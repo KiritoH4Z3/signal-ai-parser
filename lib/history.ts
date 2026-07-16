@@ -5,50 +5,20 @@
  * `localStorage`, not `sessionStorage`. The asymmetry is the point — the API key
  * dies with the tab, the work survives it. Nothing here ever touches the key.
  *
- * Storage is hostile territory: it is absent during a server render, throws when
- * site data is blocked, fills up, and can hold whatever a previous version (or a
- * different tab, or a user with devtools) wrote. Every entry point therefore
- * degrades to "no history" rather than throwing — a corrupt blob must never be
- * able to take the page down.
+ * The guarded storage accessors live in `lib/storage.ts` — every entry point
+ * here degrades to "no history" rather than throwing, because a corrupt blob
+ * must never be able to take the page down.
  */
 
 import { MAX_HISTORY } from "@/lib/config";
 import { SENTIMENT_LABELS, type SentimentLabel } from "@/lib/config";
+import { newId, readArray, removeKey, writeJson } from "@/lib/storage";
 import type { AnalysisResult, HistoryEntry } from "@/lib/types";
 
 const STORAGE_KEY = "signal.history.v1";
 
 /** Characters of source text kept for the rail's preview line. */
 const PREVIEW_CHARS = 120;
-
-function storage(): Storage | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage;
-  } catch {
-    // Site data blocked — degrade to no history, never crash.
-    return null;
-  }
-}
-
-/**
- * Monotonic suffix so two entries minted inside the same millisecond can't
- * collide when `crypto.randomUUID` is unavailable (non-secure origins, older
- * browsers). Not a dependency, not a UUID — just unique within this document.
- */
-let counter = 0;
-
-function newId(): string {
-  try {
-    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-      return crypto.randomUUID();
-    }
-  } catch {
-    // Fall through to the deterministic path.
-  }
-  counter += 1;
-  return `h${Date.now().toString(36)}-${counter.toString(36)}`;
-}
 
 /** Collapse whitespace and clip, so the rail shows one clean line. */
 export function makePreview(sourceText: string): string {
@@ -116,24 +86,7 @@ function isHistoryEntry(value: unknown): value is HistoryEntry {
  * costs you that entry, not the whole rail.
  */
 export function loadHistory(): HistoryEntry[] {
-  let raw: string | null;
-  try {
-    raw = storage()?.getItem(STORAGE_KEY) ?? null;
-  } catch {
-    return [];
-  }
-  if (!raw) return [];
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    // Corrupt blob (truncated write, hand-edited, foreign data on the key).
-    return [];
-  }
-  if (!Array.isArray(parsed)) return [];
-
-  return parsed
+  return readArray("local", STORAGE_KEY)
     .filter(isHistoryEntry)
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, MAX_HISTORY);
@@ -145,11 +98,8 @@ export function loadHistory(): HistoryEntry[] {
  * of the disk rather than throwing away good state.
  */
 function persist(entries: HistoryEntry[]): void {
-  try {
-    storage()?.setItem(STORAGE_KEY, JSON.stringify(entries));
-  } catch {
-    // Quota exceeded or storage blocked — this session keeps working in memory.
-  }
+  // Quota exceeded or storage blocked — this session keeps working in memory.
+  writeJson("local", STORAGE_KEY, entries);
 }
 
 /**
@@ -163,7 +113,7 @@ export function addEntry(
   isPreview = false,
 ): HistoryEntry[] {
   const entry: HistoryEntry = {
-    id: newId(),
+    id: newId("h"),
     timestamp: Date.now(),
     preview: makePreview(sourceText),
     source: sourceText,
@@ -185,10 +135,6 @@ export function removeEntry(id: string): HistoryEntry[] {
 
 /** Drop everything. Returns the new (empty) list. */
 export function clearHistory(): HistoryEntry[] {
-  try {
-    storage()?.removeItem(STORAGE_KEY);
-  } catch {
-    // Already unreachable.
-  }
+  removeKey("local", STORAGE_KEY);
   return [];
 }

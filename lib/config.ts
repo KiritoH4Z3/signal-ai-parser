@@ -16,6 +16,22 @@ export const APP_TAGLINE =
 export const GEMINI_MODEL = "gemini-2.5-flash";
 export const GEMINI_EMBED_MODEL = "gemini-embedding-001";
 
+/**
+ * Embedding width requested from `gemini-embedding-001` (native 3072).
+ *
+ * 768 is a storage decision, not a quality one: every saved briefing carries its
+ * vector in localStorage, and 3072 floats serialize to ~60KB per entry — 25 of
+ * those would be ~1.5MB of a ~5MB origin budget, spent on precision that ranking
+ * 25 items cannot use. Cosine similarity normalizes magnitude itself, so the
+ * truncated-dimension caveat in Google's docs (renormalize below 3072) does not
+ * bite us.
+ *
+ * Changing this number invalidates every stored vector. It does not corrupt
+ * anything: `topK` skips candidates whose dimension differs from the query's, so
+ * old entries quietly drop out of ranking until they are re-saved.
+ */
+export const EMBED_DIM = 768;
+
 // Generation config for Gemini JSON mode. responseMimeType forces a single JSON
 // object so we no longer scrape fenced code blocks as the primary path. Low
 // temperature keeps the structure consistent across runs.
@@ -36,6 +52,30 @@ export const MAX_BODY_BYTES = 64 * 1024;
 
 // Number of analyses kept in the client-side history rail.
 export const MAX_HISTORY = 10;
+
+// --- Briefing Library / RAG (docs/PLAN.md § Phase 4) ------------------------
+
+// Briefings kept in the client-side Library. Enforced on write, not just on
+// read: the cap is what keeps 25 vectors inside the localStorage budget.
+export const MAX_LIBRARY = 25;
+
+// Texts per /api/ask {op:"embed"} call. The UI embeds one briefing or one
+// question at a time; the batch exists so the route is not chatty if that ever
+// changes. Anything past this is rejected as input_too_long.
+export const MAX_EMBED_BATCH = 8;
+
+// Per-text cap for embedding. A briefing's summary+topics is a few hundred
+// chars; this is a guardrail, not a target.
+export const MAX_EMBED_CHARS = 8_000;
+
+// Briefings the answer op will accept as grounding context. The client sends
+// its top 3; the extra room is slack, not an invitation.
+export const MAX_ASK_CONTEXT = 5;
+
+// Question length bounds. The floor is far below MIN_INPUT_CHARS on purpose —
+// "Who is bullish?" is 15 characters and a perfectly good question.
+export const MIN_QUESTION_CHARS = 3;
+export const MAX_QUESTION_CHARS = 500;
 
 // Sentiment vocabulary the rest of the app relies on.
 export const SENTIMENT_LABELS = ["Positive", "Neutral", "Negative"] as const;

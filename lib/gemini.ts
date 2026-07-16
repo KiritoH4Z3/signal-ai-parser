@@ -13,7 +13,12 @@
 
 import "server-only";
 
-import { GEMINI_MODEL, GENERATION_CONFIG } from "@/lib/config";
+import {
+  EMBED_DIM,
+  GEMINI_EMBED_MODEL,
+  GEMINI_MODEL,
+  GENERATION_CONFIG,
+} from "@/lib/config";
 import { SignalError } from "@/lib/errors";
 
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
@@ -31,18 +36,17 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Call Gemini in JSON mode and return the raw text of the first usable candidate.
- * Retries exactly once, after 800ms, on a transient failure. Auth errors are
- * never retried.
- *
- * @throws SignalError `invalid_key` | `empty_response` | `api_error`
+ * The retry policy, shared by every call in this module: exactly one retry,
+ * after 800ms, and only for a transient failure (429 / 5xx / network / timeout).
+ * Auth errors are never retried — a rejected key is still rejected 800ms later,
+ * and retrying it just burns the visitor's rate limit.
  */
-export async function callGemini(apiKey: string, prompt: string): Promise<string> {
-  for (let attempt = 0; attempt < 2; attempt++) {
+async function withRetry<T>(attempt: () => Promise<T>): Promise<T> {
+  for (let tries = 0; tries < 2; tries++) {
     try {
-      return await attemptCall(apiKey, prompt);
+      return await attempt();
     } catch (err) {
-      if (err instanceof TransientError && attempt === 0) {
+      if (err instanceof TransientError && tries === 0) {
         await sleep(RETRY_DELAY_MS);
         continue;
       }
@@ -55,6 +59,35 @@ export async function callGemini(apiKey: string, prompt: string): Promise<string
   }
   /* istanbul ignore next — loop always returns or throws. */
   throw new SignalError("api_error");
+}
+
+/**
+ * Call Gemini in JSON mode and return the raw text of the first usable candidate.
+ *
+ * @throws SignalError `invalid_key` | `empty_response` | `api_error`
+ */
+export async function callGemini(apiKey: string, prompt: string): Promise<string> {
+  return withRetry(() => attemptCall(apiKey, prompt));
+}
+
+/**
+ * Embed one or more texts (docs/PLAN.md § Phase 4). Returns one vector per input
+ * text, in input order — the caller pairs them up positionally, so a partial
+ * result is a bug rather than a degraded success and is rejected below.
+ *
+ * `taskType: SEMANTIC_SIMILARITY` is chosen because this route embeds both sides
+ * of the comparison — saved briefings and the question — through the same door.
+ * The asymmetric RETRIEVAL_DOCUMENT / RETRIEVAL_QUERY pair would score better,
+ * but only if the caller told us which side it was embedding, and the `{texts}`
+ * contract deliberately doesn't.
+ *
+ * @throws SignalError `invalid_key` | `empty_response` | `malformed_json` | `api_error`
+ */
+export async function embedTexts(
+  apiKey: string,
+  texts: readonly string[],
+): Promise<number[][]> {
+  return withRetry(() => attemptEmbed(apiKey, texts));
 }
 
 async function attemptCall(apiKey: string, prompt: string): Promise<string> {
@@ -88,6 +121,89 @@ async function attemptCall(apiKey: string, prompt: string): Promise<string> {
     throw new SignalError("api_error");
   }
   return extractText(payload);
+}
+
+async function attemptEmbed(
+  apiKey: string,
+  texts: readonly string[],
+): Promise<number[][]> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/models/${GEMINI_EMBED_MODEL}:batchEmbedContents`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        requests: texts.map((text) => ({
+          // The per-request `model` is required by batchEmbedContents even though
+          // the URL already names it.
+          model: `models/${GEMINI_EMBED_MODEL}`,
+          content: { parts: [{ text }] },
+          taskType: "SEMANTIC_SIMILARITY",
+          outputDimensionality: EMBED_DIM,
+        })),
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch {
+    throw new TransientError("network");
+  }
+
+  if (!res.ok) {
+    throw await mapHttpError(res);
+  }
+
+  let payload: unknown;
+  try {
+    payload = await res.json();
+  } catch {
+    throw new SignalError("api_error");
+  }
+  return extractEmbeddings(payload, texts.length);
+}
+
+/**
+ * Pull vectors out of a batchEmbedContents payload, or fail loudly.
+ *
+ * Strict on purpose, unlike `extractText`'s salvage-what-you-can walk: a text
+ * whose embedding silently went missing would shift every later vector onto the
+ * wrong briefing, and a NaN inside a vector would poison ranking rather than
+ * error. Both are worse than a 502.
+ *
+ * @throws SignalError `empty_response` (nothing usable) | `malformed_json` (wrong shape)
+ */
+export function extractEmbeddings(payload: unknown, expected: number): number[][] {
+  const rows = asArray(get(payload, "embeddings"));
+  if (rows.length === 0) {
+    throw new SignalError(
+      "empty_response",
+      "The embedding service returned nothing. Please try again.",
+    );
+  }
+  if (rows.length !== expected) {
+    throw new SignalError(
+      "empty_response",
+      "The embedding service returned a partial result. Please try again.",
+    );
+  }
+
+  return rows.map((row) => {
+    const values = asArray(get(row, "values"));
+    if (values.length === 0) {
+      throw new SignalError(
+        "empty_response",
+        "The embedding service returned an empty vector. Please try again.",
+      );
+    }
+    return values.map((v) => {
+      if (typeof v !== "number" || !Number.isFinite(v)) {
+        throw new SignalError("malformed_json");
+      }
+      return v;
+    });
+  });
 }
 
 /** Map a non-2xx Gemini response onto the error taxonomy. */
